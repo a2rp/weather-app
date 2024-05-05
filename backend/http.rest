@@ -1,0 +1,7 @@
+### GET weather stats
+GET http://localhost:1198/weather
+Content-Type: application/json
+
+{
+    "location": "dilli"
+}
