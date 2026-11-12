@@ -1,7 +1,7 @@
-### GET weather stats
-GET http://localhost:1198/weather
+### Search current weather by city
+POST http://localhost:5000/weather
 Content-Type: application/json
 
 {
-    "location": "dilli"
+    "location": "Delhi"
 }

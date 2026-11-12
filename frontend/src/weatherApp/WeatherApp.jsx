@@ -1,11 +1,31 @@
 import React, { useState } from "react";
-import styles from "./styles.module.scss";
 import { Button, CircularProgress, TextField } from "@mui/material";
-import { ToastContainer, toast } from "react-toastify";
-import "react-toastify/dist/ReactToastify.css";
 import axios from "axios";
 import { FiSunrise, FiSunset } from "react-icons/fi";
 import { TbTemperatureCelsius } from "react-icons/tb";
+import { ToastContainer, toast } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
+
+import styles from "./styles.module.scss";
+
+const apiBaseUrl = (import.meta.env.VITE_WEATHER_API_URL || "").replace(
+    /\/+$/,
+    "",
+);
+
+const formatCityDateTime = (timestamp, timezoneOffset, options) => {
+    const shiftedTimestamp =
+        Number(timestamp) + (Number(timezoneOffset) || 0);
+
+    if (!Number.isFinite(shiftedTimestamp)) {
+        return "Unavailable";
+    }
+
+    return new Intl.DateTimeFormat(undefined, {
+        timeZone: "UTC",
+        ...options,
+    }).format(new Date(shiftedTimestamp * 1000));
+};
 
 const WeatherApp = () => {
     const [isLoading, setIsLoading] = useState(false);
@@ -15,44 +35,68 @@ const WeatherApp = () => {
     const handleFormSubmit = async (event) => {
         event.preventDefault();
 
+        const location = locationInput.trim();
+
+        if (!location) {
+            toast.warn("Enter a city or place name.");
+            return;
+        }
+
+        setIsLoading(true);
+        setWeatherData(null);
+
         try {
-            if (locationInput.trim().length === 0) {
-                return toast.warn("Input box is empty");
+            const response = await axios.post(`${apiBaseUrl}/weather`, {
+                location,
+            });
+
+            if (!response.data?.success || !response.data.data) {
+                toast.error(
+                    response.data?.message ||
+                        "Weather data could not be loaded.",
+                );
+                return;
             }
 
-            const options = {
-                url: "http://localhost:1198/weather",
-                method: "POST",
-                data: {
-                    location: locationInput
-                }
-            };
-            setIsLoading(true);
-            setWeatherData(null);
-            const response = await axios(options);
-            // console.log(response);
-            if (response.data.success) {
-                setWeatherData(response.data.data);
-            }
+            setWeatherData(response.data.data);
         } catch (error) {
-            console.log(error);
-            toast.error(error.message);
+            toast.error(
+                error.response?.data?.message ||
+                    "Could not reach the weather service. Try again shortly.",
+            );
         } finally {
             setIsLoading(false);
         }
     };
 
+    const condition = weatherData?.weather?.[0];
+    const timezoneOffset = weatherData?.timezone || 0;
+
     return (
-        <div className={styles.container}>
-            <div className={styles.main}>
-                <div className={styles.heading}>Weather Details App.</div>
+        <main className={styles.container}>
+            <section className={styles.main} aria-labelledby="weather-heading">
+                <p className={styles.eyebrow}>Current conditions</p>
+                <h1 className={styles.heading} id="weather-heading">
+                    Weather lookup
+                </h1>
+                <p className={styles.intro}>
+                    Search a city to see its current weather and local daylight
+                    times.
+                </p>
+
                 <form className={styles.form} onSubmit={handleFormSubmit}>
                     <div className={styles.inputContainer}>
                         <TextField
-                            val={locationInput}
-                            onChange={event => setLocationInput(event.target.value)}
-                            label="Location"
-                            placeholder="Enter location here"
+                            value={locationInput}
+                            onChange={(event) =>
+                                setLocationInput(event.target.value)
+                            }
+                            label="City or place"
+                            placeholder="For example, Delhi"
+                            inputProps={{
+                                maxLength: 100,
+                                autoComplete: "address-level2",
+                            }}
                             fullWidth
                         />
                         <Button
@@ -60,49 +104,131 @@ const WeatherApp = () => {
                             disabled={isLoading}
                             variant="contained"
                             className={styles.searchLocationButton}
-                        >{isLoading ? <CircularProgress sx={{ padding: "5px" }} /> : "Search"}</Button>
+                        >
+                            {isLoading ? (
+                                <CircularProgress
+                                    size={22}
+                                    color="inherit"
+                                    aria-label="Searching weather"
+                                />
+                            ) : (
+                                "Search"
+                            )}
+                        </Button>
                     </div>
                 </form>
-                {weatherData != null && <>
-                    <div className={styles.outputContainer}>
-                        <div>{new Date(weatherData.dt * 1000).toString()}</div>
-                        <div style={{ display: "flex", alignItems: "center" }}>
-                            <img
-                                style={{ width: "100px", height: "100px" }}
-                                src={`https://openweathermap.org/img/wn/${weatherData.weather[0].icon}@2x.png`}
-                                alt="" />
-                            <div>{weatherData.weather[0].main}&nbsp;
-                                [{weatherData.weather[0].description}]</div>
-                        </div>
-                        <div className={styles.locationName}>{weatherData.name}, {weatherData.sys.country}</div>
-                        <div>
-                            <span>Latitude:&nbsp;</span> {weatherData.coord.lat},&nbsp;
-                            <span>Longitude:&nbsp;</span> {weatherData.coord.lon}
-                        </div>
-                        <div style={{ display: "flex", justifyContent: "center", gap: "50px" }}>
-                            <div style={{ display: "flex", justifyContent: "space-between", gap: "15px", alignItems: "center" }}>
-                                <FiSunrise style={{ fontSize: "32px" }} />{new Date(weatherData.sys.sunrise * 1000).toLocaleTimeString()}
+
+                {weatherData && (
+                    <section
+                        className={styles.outputContainer}
+                        aria-label={`Current weather for ${weatherData.name}`}
+                    >
+                        <p className={styles.dateTime}>
+                            Updated {" "}
+                            {formatCityDateTime(
+                                weatherData.dt,
+                                timezoneOffset,
+                                { dateStyle: "medium", timeStyle: "short" },
+                            )}
+                        </p>
+
+                        <div className={styles.weatherCondition}>
+                            {condition?.icon && (
+                                <img
+                                    className={styles.weatherIcon}
+                                    src={`https://openweathermap.org/img/wn/${condition.icon}@2x.png`}
+                                    alt=""
+                                />
+                            )}
+                            <div>
+                                <h2 className={styles.locationName}>
+                                    {weatherData.name}
+                                    {weatherData.sys?.country && (
+                                        <span>, {weatherData.sys.country}</span>
+                                    )}
+                                </h2>
+                                <p className={styles.conditionText}>
+                                    {condition?.description ||
+                                        condition?.main ||
+                                        "Current weather"}
+                                </p>
                             </div>
-                            <div style={{ display: "flex", justifyContent: "space-between", gap: "15px", alignItems: "center" }}>
-                                <FiSunset style={{ fontSize: "32px" }} /> {new Date(weatherData.sys.sunset * 1000).toLocaleTimeString()}
-                            </div>
-                        </div>
-                        <div style={{ display: "flex", justifyContent: "center", gap: "50px" }}>
-                            <div><span>Temperature:&nbsp;</span> {(weatherData.main.temp - 273.15).toFixed(2)}<TbTemperatureCelsius /></div>
-                            <div><span>Humidity:&nbsp;</span> {(weatherData.main.humidity)}% </div>
-                            <div><span>Visibility:&nbsp;</span> {(weatherData.visibility)}m </div>
-                            <div><span>Wind speed:&nbsp;</span> {(weatherData.wind.speed)}meter/sec </div>
                         </div>
 
-                        {/* <pre>{JSON.stringify(weatherData, null, 4)}</pre> */}
-                    </div>
-                </>}
-            </div>
+                        <p className={styles.coordinates}>
+                            {weatherData.coord?.lat?.toFixed(2)}, {" "}
+                            {weatherData.coord?.lon?.toFixed(2)}
+                        </p>
 
-            <ToastContainer />
-        </div>
-    )
-}
+                        <div className={styles.sunTimes}>
+                            <div className={styles.sunTime}>
+                                <FiSunrise aria-hidden="true" />
+                                <span>Sunrise</span>
+                                <strong>
+                                    {formatCityDateTime(
+                                        weatherData.sys?.sunrise,
+                                        timezoneOffset,
+                                        { hour: "numeric", minute: "2-digit" },
+                                    )}
+                                </strong>
+                            </div>
+                            <div className={styles.sunTime}>
+                                <FiSunset aria-hidden="true" />
+                                <span>Sunset</span>
+                                <strong>
+                                    {formatCityDateTime(
+                                        weatherData.sys?.sunset,
+                                        timezoneOffset,
+                                        { hour: "numeric", minute: "2-digit" },
+                                    )}
+                                </strong>
+                            </div>
+                        </div>
+
+                        <div className={styles.metricGrid}>
+                            <div className={styles.metric}>
+                                <span className={styles.metricLabel}>
+                                    Temperature
+                                </span>
+                                <strong className={styles.metricValue}>
+                                    {Number(weatherData.main?.temp).toFixed(1)}
+                                    <TbTemperatureCelsius aria-hidden="true" />
+                                </strong>
+                            </div>
+                            <div className={styles.metric}>
+                                <span className={styles.metricLabel}>
+                                    Humidity
+                                </span>
+                                <strong className={styles.metricValue}>
+                                    {weatherData.main?.humidity}%
+                                </strong>
+                            </div>
+                            <div className={styles.metric}>
+                                <span className={styles.metricLabel}>
+                                    Visibility
+                                </span>
+                                <strong className={styles.metricValue}>
+                                    {(Number(weatherData.visibility) / 1000).toFixed(
+                                        1,
+                                    )} km
+                                </strong>
+                            </div>
+                            <div className={styles.metric}>
+                                <span className={styles.metricLabel}>
+                                    Wind speed
+                                </span>
+                                <strong className={styles.metricValue}>
+                                    {weatherData.wind?.speed} m/s
+                                </strong>
+                            </div>
+                        </div>
+                    </section>
+                )}
+            </section>
+
+            <ToastContainer position="top-center" theme="dark" />
+        </main>
+    );
+};
 
 export default WeatherApp;
-
